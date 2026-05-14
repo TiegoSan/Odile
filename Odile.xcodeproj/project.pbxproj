@@ -351,7 +351,7 @@
 					"$(PROJECT_DIR)/Vendor/lib",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Odile;
+				INFOPLIST_KEY_CFBundleDisplayName = "Odile!";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UIAppFonts = "App/Fonts/Lobster-Regular.ttf";
@@ -360,7 +360,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gautier.Odile;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gautier.odile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -385,7 +385,7 @@
 					"$(PROJECT_DIR)/Vendor/lib",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Odile;
+				INFOPLIST_KEY_CFBundleDisplayName = "Odile!";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UIAppFonts = "App/Fonts/Lobster-Regular.ttf";
@@ -394,7 +394,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gautier.Odile;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gautier.odile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
