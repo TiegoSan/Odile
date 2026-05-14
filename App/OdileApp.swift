@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         window.styleMask.insert(.fullSizeContentView)
         window.collectionBehavior = [.fullScreenNone]
         window.tabbingMode = .disallowed
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.backgroundColor = .clear
         window.appearance = NSAppearance(named: .darkAqua)
         window.isOpaque = false

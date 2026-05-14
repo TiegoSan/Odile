@@ -25,9 +25,8 @@ enum MusicEDLColorKey: String, CaseIterable, Identifiable {
     case buttonLoad
     case buttonMarkers
     case buttonDelete
-    case buttonCopy
+    case buttonMerge
     case buttonExport
-    case buttonColors
 
     var id: String { rawValue }
 
@@ -56,9 +55,8 @@ enum MusicEDLColorKey: String, CaseIterable, Identifiable {
         case .buttonLoad: return "Button Load"
         case .buttonMarkers: return "Button Markers"
         case .buttonDelete: return "Button Delete"
-        case .buttonCopy: return "Button Copy"
+        case .buttonMerge: return "Button Merge"
         case .buttonExport: return "Button XLSX"
-        case .buttonColors: return "Button Colors"
         }
     }
 
@@ -87,9 +85,8 @@ enum MusicEDLColorKey: String, CaseIterable, Identifiable {
         case .buttonLoad: return "#FFE347"
         case .buttonMarkers: return "#FF4FD8"
         case .buttonDelete: return "#FF3366"
-        case .buttonCopy: return "#20EFA3"
+        case .buttonMerge: return "#20EFA3"
         case .buttonExport: return "#27A9FF"
-        case .buttonColors: return "#A66BFF"
         }
     }
 
@@ -199,9 +196,8 @@ enum AppTheme {
     static var buttonLoad: Color { theme.baseColor(for: .buttonLoad) }
     static var buttonMarkers: Color { theme.baseColor(for: .buttonMarkers) }
     static var buttonDelete: Color { theme.baseColor(for: .buttonDelete) }
-    static var buttonCopy: Color { theme.baseColor(for: .buttonCopy) }
+    static var buttonMerge: Color { theme.baseColor(for: .buttonMerge) }
     static var buttonExport: Color { theme.baseColor(for: .buttonExport) }
-    static var buttonColors: Color { theme.baseColor(for: .buttonColors) }
 
     static let cardCornerRadius: CGFloat = 15
     static let controlCornerRadius: CGFloat = 10

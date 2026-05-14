@@ -12,6 +12,7 @@ FOUNDATION_EXPORT NSString *const PTSLRuntimeLogMessageKey;
 - (NSDictionary *)hostReadyStatus;
 - (NSDictionary *)exportMusicEDLForTrackNames:(NSArray<NSString *> *)trackNames;
 - (NSDictionary *)exportMusicEDLForSelectedTracks;
+- (NSDictionary *)availableMarkerRulerNames;
 - (NSDictionary *)importMusicMarkers:(NSArray<NSDictionary *> *)markers;
 
 @end

@@ -228,6 +228,44 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
     };
 }
 
+- (NSDictionary *)availableMarkerRulerNames {
+    NSError *error = nil;
+    NSDictionary *memoryPayload = nil;
+    NSString *getBody = [self jsonStringFromObject:@{
+        @"pagination_request": @{ @"limit": @0, @"offset": @0 }
+    }];
+
+    if (![self sendCommand:CommandId::CId_GetMemoryLocations
+                      body:getBody
+           responsePayload:&memoryPayload
+                     error:&error]) {
+        return [self failurePayload:error.localizedDescription ?: @"GetMemoryLocations failed"];
+    }
+
+    NSMutableOrderedSet<NSString *> *rulerNames = [NSMutableOrderedSet orderedSet];
+    [rulerNames addObject:@"Markers"];
+
+    NSArray *existing = [memoryPayload[@"memory_locations"] isKindOfClass:[NSArray class]] ? memoryPayload[@"memory_locations"] : @[];
+    for (id item in existing) {
+        if (![item isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        NSString *trackName = ((NSDictionary *)item)[@"track_name"];
+        if (![trackName isKindOfClass:[NSString class]]) {
+            continue;
+        }
+        NSString *trimmed = [trackName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (trimmed.length > 0) {
+            [rulerNames addObject:trimmed];
+        }
+    }
+
+    return @{
+        @"ok": @YES,
+        @"ruler_names": rulerNames.array ?: @[]
+    };
+}
+
 - (NSDictionary *)importMusicMarkers:(NSArray<NSDictionary *> *)markers {
     if (markers.count == 0) {
         return [self failurePayload:@"Aucun marker a importer"];
@@ -266,6 +304,10 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
         NSString *startTime = [marker[@"start_time"] isKindOfClass:[NSString class]] ? marker[@"start_time"] : @"";
         NSString *endTime = [marker[@"end_time"] isKindOfClass:[NSString class]] ? marker[@"end_time"] : @"";
         NSString *comments = [marker[@"comments"] isKindOfClass:[NSString class]] ? marker[@"comments"] : @"";
+        NSInteger colorIndex = [marker[@"color_index"] isKindOfClass:[NSNumber class]] ? [marker[@"color_index"] integerValue] : 0;
+        NSString *rulerName = [marker[@"ruler_name"] isKindOfClass:[NSString class]] ? marker[@"ruler_name"] : @"";
+        NSString *trimmedRuler = [rulerName stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        BOOL hasRuler = trimmedRuler.length > 0;
 
         if (name.length == 0 || startTime.length == 0) {
             [failureList addObject:name.length > 0 ? name : @"Marker sans nom/timecode"];
@@ -296,9 +338,9 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
                 @"venue_snapshot_name": @""
             },
             @"comments": comments,
-            @"color_index": @0,
-            @"location": @"MLC_MainRuler",
-            @"track_name": @""
+            @"color_index": @(colorIndex),
+            @"location": hasRuler ? @"MarkerLocation_NamedRuler" : @"MLC_MainRuler",
+            @"track_name": hasRuler ? trimmedRuler : @""
         };
 
         NSError *createError = nil;

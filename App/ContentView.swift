@@ -18,7 +18,20 @@ struct ContentView: View {
     @State private var isLoading = false
     @State private var isImportingMarkers = false
     @State private var frameRate = 25
-    @State private var selectedEntryID: MusicEDLEntry.ID?
+    @State private var selectedEntryIDs: Set<MusicEDLEntry.ID> = []
+    @State private var lastClickedIndex: Int? = nil
+    @State private var undoStack: [[MusicEDLEntry]] = []
+    @State private var columnWidths: [CGFloat] = [52, 540, 132, 132, 122]
+    @State private var dragStartWidths: [Int: CGFloat] = [:]
+    @State private var isProToolsOnline = false
+    @State private var showMarkerSettings = false
+    @State private var markerColorIndex: Int = 1
+    @State private var markerRulerName: String = "Markers"
+    @State private var markerRulerOptions: [String] = ["Markers"]
+    @State private var isLoadingMarkerRulers = false
+    @State private var showXLSXPreview = false
+    @State private var xlsxSettings = XLSXExportSettings()
+    @State private var undoEventMonitor: Any? = nil
     @State private var showLaunchInstruction = false
     @State private var didShowLaunchInstruction = false
     @FocusState private var isOffsetFieldFocused: Bool
@@ -37,29 +50,60 @@ struct ContentView: View {
         .foregroundColor(AppTheme.textPrimary)
         .preferredColorScheme(.dark)
         .onAppear(perform: handleAppear)
+        .onDisappear {
+            if let m = undoEventMonitor { NSEvent.removeMonitor(m); undoEventMonitor = nil }
+        }
         .alert("Select tracks in Protools then click Load", isPresented: $showLaunchInstruction) {
             Button("OK", role: .cancel) {}
         }
-        .onDeleteCommand(perform: deleteSelectedEntry)
+        .onDeleteCommand(perform: deleteSelectedEntries)
+        .onMoveCommand(perform: moveSelection)
+        .sheet(isPresented: $showMarkerSettings) {
+            MarkersSettingsSheet(
+                colorIndex: $markerColorIndex,
+                rulerName: $markerRulerName,
+                rulerOptions: markerRulerOptions,
+                isLoadingRulers: isLoadingMarkerRulers,
+                onRefreshRulers: refreshMarkerRulerOptions,
+                onImport: {
+                    showMarkerSettings = false
+                    performImportMarkers()
+                },
+                onCancel: { showMarkerSettings = false }
+            )
+        }
+        .sheet(isPresented: $showXLSXPreview) {
+            XLSXPreviewSheet(
+                entries: entries,
+                sessionName: sessionName,
+                settings: $xlsxSettings,
+                onExport: {
+                    showXLSXPreview = false
+                    performExportXLSX()
+                },
+                onCancel: { showXLSXPreview = false }
+            )
+        }
     }
 
     private var toolbar: some View {
         HStack(alignment: .top, spacing: 10) {
-            HStack(alignment: .top, spacing: 24) {
-                Image("LogoGogoLabs")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 110, height: 110)
-                    .offset(x: 20, y: -10)
-                    .shadow(color: AppTheme.accent.opacity(0.44), radius: 18, x: 0, y: 8)
+            Image("LogoGogoLabs")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 110, height: 110)
+                .offset(x: 20, y: -10)
+            
+            Spacer()
 
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: 14) {
                     Text("Odile")
                         .font(.custom("Lobster-Regular", size: 65))
                         .foregroundColor(AppTheme.textPrimary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .offset(y: -15)
+                        .offset(y: 0)
 
                     Text(appVersionBadge)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -74,28 +118,31 @@ struct ContentView: View {
                             Capsule(style: .continuous)
                                 .stroke(AppTheme.border, lineWidth: 1)
                         )
-                        .offset(y: -25)
+                        .offset(y: -18)
                 }
-                .frame(width: 316, height: 90, alignment: .center)
-                .offset(x: -16, y: -7)
-            }
-            .frame(width: 430, height: 90, alignment: .leading)
 
-            toolbarControl(width: 204, help: "Apply a TC offset.") {
-                HStack(spacing: 6) {
+                Text("EDL Maker assistant")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.textPrimary.opacity(0.85))
+                    .offset(y: -12)
+            }
+            .frame(height: 98, alignment: .center)
+            .offset(y: -17)
+            
+            Spacer()
+
+            HStack(alignment: .top, spacing: 6) {
+                toolbarControl(width: 54, help: " ") {
                     Picker("", selection: $offsetSign) {
                         Text("+").tag("+")
                         Text("-").tag("-")
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 58)
-                    .onChange(of: offsetSign) { _ in
-                        reparseWithCurrentOffset(updateStatus: false)
-                    }
+                }
 
+                toolbarControl(width: 125, help: "Apply a TC offset.") {
                     TextField("00:00:00:00", text: $offsetInput)
                         .gogoTimecodeField(font: .system(size: 15, weight: .semibold, design: .monospaced))
-                        .frame(width: 140)
                         .help("Offset HH:MM:SS:FF")
                         .focused($isOffsetFieldFocused)
                         .onSubmit {
@@ -104,17 +151,16 @@ struct ContentView: View {
                         }
                         .onChange(of: offsetInput) { _ in
                             syncOffsetSignFromInputIfNeeded()
-                            reparseWithCurrentOffset(updateStatus: false)
                         }
                 }
             }
 
             toolbarButton("Load", systemImage: "arrow.clockwise", help: "Read PT tracks.", tint: AppTheme.buttonLoad, disabled: isLoading, action: loadEDL)
                 .keyboardShortcut("r", modifiers: [.command])
-            toolbarButton(isImportingMarkers ? "Importing" : "Markers", systemImage: "mappin.and.ellipse", help: "Send markers.", tint: AppTheme.buttonMarkers, disabled: entries.isEmpty || isImportingMarkers, action: importMarkers)
-            toolbarButton("Delete", systemImage: "trash", help: "Remove row.", tint: AppTheme.buttonDelete, disabled: selectedEntryID == nil, action: deleteSelectedEntry)
-            toolbarButton("Copy", systemImage: "doc.on.doc", help: "Copy CSV.", tint: AppTheme.buttonCopy, disabled: entries.isEmpty, action: copyCSV)
-            toolbarButton("XLSX", systemImage: "square.and.arrow.down", help: "Export file.", tint: AppTheme.buttonExport, disabled: entries.isEmpty, action: exportXLSX)
+            toolbarButton(isImportingMarkers ? "Importing" : "Markers", systemImage: "mappin.and.ellipse", help: "Send markers.", tint: AppTheme.buttonMarkers, disabled: entries.isEmpty || isImportingMarkers, action: openMarkerSettings)
+            toolbarButton("Delete", systemImage: "trash", help: "Remove row.", tint: AppTheme.buttonDelete, disabled: selectedEntryIDs.isEmpty, action: deleteSelectedEntries)
+            toolbarButton("Merge", systemImage: "arrow.triangle.merge", help: "Merge rows.", tint: AppTheme.buttonDelete, disabled: selectedEntryIDs.count < 2, action: mergeSelectedEntries)
+            toolbarButton("XLSX", systemImage: "square.and.arrow.down", help: "Export file.", tint: AppTheme.buttonExport, disabled: entries.isEmpty, action: { showXLSXPreview = true })
 
             Spacer(minLength: 0)
         }
@@ -172,50 +218,61 @@ struct ContentView: View {
         return "v\(version)"
     }
 
-    private var table: some View {
-        VStack(spacing: 0) {
-            tableHeader
-            Divider().overlay(AppTheme.softBorder)
+    private let actionColumnWidth: CGFloat = 42
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        editableRow(entry: entry, index: index)
+    private var table: some View {
+        GeometryReader { proxy in
+            let widths = effectiveColumnWidths(totalWidth: proxy.size.width)
+            VStack(spacing: 0) {
+                tableHeader(widths: widths)
+                Divider().overlay(AppTheme.softBorder)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            editableRow(entry: entry, index: index, widths: widths)
+                        }
                     }
                 }
+                .background(AppTheme.backgroundBottom)
             }
             .background(AppTheme.backgroundBottom)
         }
-        .background(AppTheme.backgroundBottom)
     }
 
-    private var tableColumns: [GridItem] {
-        [
-            GridItem(.fixed(52), spacing: 0, alignment: .leading),
-            GridItem(.flexible(minimum: 360), spacing: 0, alignment: .leading),
-            GridItem(.fixed(112), spacing: 0, alignment: .leading),
-            GridItem(.fixed(112), spacing: 0, alignment: .leading),
-            GridItem(.fixed(100), spacing: 0, alignment: .leading),
-            GridItem(.fixed(42), spacing: 0, alignment: .center)
-        ]
+    private func tableColumns(widths: [CGFloat]) -> [GridItem] {
+        widths.map { GridItem(.fixed($0), spacing: 0, alignment: .leading) }
+        + [GridItem(.fixed(actionColumnWidth), spacing: 0, alignment: .center)]
     }
 
-    private var tableHeader: some View {
-        LazyVGrid(columns: tableColumns, alignment: .leading, spacing: 0) {
-            headerCell("No")
-            headerCell("Name")
-            headerCell("In")
-            headerCell("Out")
-            headerCell("Duration")
-            headerCell("")
+    private let minColumnWidths: [CGFloat] = [40, 320, 110, 110, 100]
+
+    private func effectiveColumnWidths(totalWidth: CGFloat) -> [CGFloat] {
+        var widths = columnWidths
+        let used = widths.reduce(0, +) + actionColumnWidth
+        let extra = max(0, totalWidth - used)
+        if widths.indices.contains(1) {
+            widths[1] += extra
+        }
+        return widths
+    }
+
+    private func tableHeader(widths: [CGFloat]) -> some View {
+        LazyVGrid(columns: tableColumns(widths: widths), alignment: .leading, spacing: 0) {
+            headerCell("No", colIndex: 0)
+            headerCell("Name", colIndex: 1)
+            headerCell("In", colIndex: 2)
+            headerCell("Out", colIndex: 3)
+            headerCell("Duration", colIndex: 4)
+            headerCell("", colIndex: 5)
         }
         .frame(minHeight: 38)
         .background(AppTheme.card.opacity(0.92))
     }
 
-    private func editableRow(entry: MusicEDLEntry, index: Int) -> some View {
-        let isSelected = selectedEntryID == entry.id
-        return LazyVGrid(columns: tableColumns, alignment: .leading, spacing: 0) {
+    private func editableRow(entry: MusicEDLEntry, index: Int, widths: [CGFloat]) -> some View {
+        let isSelected = selectedEntryIDs.contains(entry.id)
+        return LazyVGrid(columns: tableColumns(widths: widths), alignment: .leading, spacing: 0) {
             eventCell(entry.event)
             editableNameCell(binding(for: entry.id, \.clipName))
             editableTimeCell(timeBinding(for: entry.id, \.startTime))
@@ -237,7 +294,22 @@ struct ContentView: View {
         .background(rowBackground(index: index, isSelected: isSelected))
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded {
-            selectedEntryID = entry.id
+            let modifiers = NSEvent.modifierFlags
+            if modifiers.contains(.command) {
+                if selectedEntryIDs.contains(entry.id) {
+                    selectedEntryIDs.remove(entry.id)
+                } else {
+                    selectedEntryIDs.insert(entry.id)
+                }
+            } else if modifiers.contains(.shift), let lastIdx = lastClickedIndex {
+                let lo = min(lastIdx, index)
+                let hi = max(lastIdx, index)
+                let ids = entries[lo...hi].map(\.id)
+                selectedEntryIDs = Set(ids)
+            } else {
+                selectedEntryIDs = [entry.id]
+            }
+            lastClickedIndex = index
         })
         .contextMenu {
             Button("Copy In") {
@@ -262,17 +334,41 @@ struct ContentView: View {
         }
     }
 
-    private func headerCell(_ title: String) -> some View {
-        Text(title)
+    private func headerCell(_ title: String, colIndex: Int) -> some View {
+        let isDraggable = colIndex < columnWidths.count
+        let minW = colIndex < minColumnWidths.count ? minColumnWidths[colIndex] : 40
+        return Text(title)
             .font(.system(size: 12, weight: .semibold))
             .foregroundColor(AppTheme.textPrimary)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
             .overlay(alignment: .trailing) {
-                if !title.isEmpty {
-                    Rectangle()
-                        .fill(AppTheme.softBorder)
-                        .frame(width: 1, height: 18)
+                if isDraggable {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.001))
+                            .frame(width: 10)
+                            .contentShape(Rectangle())
+                            .onHover { hovering in
+                                if hovering { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                            }
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 1, coordinateSpace: .local)
+                                    .onChanged { value in
+                                        if dragStartWidths[colIndex] == nil {
+                                            dragStartWidths[colIndex] = columnWidths[colIndex]
+                                        }
+                                        let startW = dragStartWidths[colIndex]!
+                                        columnWidths[colIndex] = max(minW, startW + value.translation.width)
+                                    }
+                                    .onEnded { _ in
+                                        dragStartWidths.removeValue(forKey: colIndex)
+                                    }
+                            )
+                        Rectangle()
+                            .fill(AppTheme.softBorder)
+                            .frame(width: 1, height: 18)
+                    }
                 }
             }
     }
@@ -292,15 +388,7 @@ struct ContentView: View {
     }
 
     private func editableNameCell(_ value: Binding<String>) -> some View {
-        TextField("", text: value, axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .regular))
-            .foregroundColor(AppTheme.textPrimary)
-            .lineLimit(1...4)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+        NameCellView(value: value)
     }
 
     private func eventCell(_ value: String) -> some View {
@@ -347,7 +435,11 @@ struct ContentView: View {
 
             Text(statusText)
                 .font(.system(size: 12))
-                .foregroundColor((isLoading || isImportingMarkers) ? AppTheme.accent : AppTheme.textSecondary)
+                .foregroundColor(
+                    (isLoading || isImportingMarkers) ? AppTheme.accent :
+                    !isProToolsOnline ? Color.red :
+                    AppTheme.textSecondary
+                )
                 .lineLimit(1)
 
             Divider()
@@ -439,6 +531,15 @@ struct ContentView: View {
     private func handleAppear() {
         checkHost()
         isOffsetFieldFocused = false
+        undoEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [self] event in
+            guard event.modifierFlags.contains(.command),
+                  !event.modifierFlags.contains(.shift),
+                  !event.modifierFlags.contains(.option),
+                  event.charactersIgnoringModifiers == "z",
+                  !(NSApp.keyWindow?.firstResponder is NSTextView) else { return event }
+            DispatchQueue.main.async { undoAction() }
+            return nil
+        }
 
         guard !didShowLaunchInstruction else {
             return
@@ -453,9 +554,11 @@ struct ContentView: View {
             let payload = PTSLManager.shared().hostReadyStatus()
             DispatchQueue.main.async {
                 if let ok = payload["ok"] as? Bool, ok {
+                    isProToolsOnline = true
                     statusText = "Pro Tools ready"
-                } else if let error = payload["error"] as? String {
-                    statusText = error
+                } else {
+                    isProToolsOnline = false
+                    statusText = (payload["error"] as? String) ?? "Pro Tools offline"
                 }
             }
         }
@@ -470,7 +573,7 @@ struct ContentView: View {
         isLoading = true
         statusText = "Reading selected Pro Tools tracks..."
         entries = []
-        selectedEntryID = nil
+        selectedEntryIDs = []
         foundTracks = []
         missingTracks = []
         mutedRegionCount = 0
@@ -520,8 +623,12 @@ struct ContentView: View {
 
     private func applyParsedResult(parseTargets: [String], updateStatus: Bool) {
         let result = MusicEDLParser.parse(rawSessionInfo, targetTracks: parseTargets, offset: normalizedOffsetInput())
-        entries = result.entries
-        selectedEntryID = nil
+        entries = result.entries.map { entry in
+            var updated = entry
+            updated.clipName = importTitleCase(entry.clipName)
+            return updated
+        }
+        selectedEntryIDs = []
         mutedRegionCount = result.mutedRegionCount
         frameRate = result.frameRate
 
@@ -544,6 +651,27 @@ struct ContentView: View {
         }
         let unsigned = trimmed.isEmpty ? "00:00:00:00" : trimmed
         return offsetSign == "-" && unsigned != "00:00:00:00" ? "-\(unsigned)" : unsigned
+    }
+
+    private func importTitleCase(_ value: String) -> String {
+        let separators = CharacterSet(charactersIn: " \t\n\r-_./")
+        var result = ""
+        var shouldCapitalize = true
+
+        for scalar in value.unicodeScalars {
+            let character = String(scalar)
+            if separators.contains(scalar) {
+                result += character
+                shouldCapitalize = true
+            } else if shouldCapitalize {
+                result += character.uppercased()
+                shouldCapitalize = false
+            } else {
+                result += character.lowercased()
+            }
+        }
+
+        return result
     }
 
     private func syncOffsetSignFromInputIfNeeded() {
@@ -598,29 +726,111 @@ struct ContentView: View {
         mutate(&entries[index])
     }
 
-    private func deleteSelectedEntry() {
-        guard let selectedEntryID else {
+    private func saveUndoSnapshot() {
+        undoStack.append(entries)
+        if undoStack.count > 10 { undoStack.removeFirst() }
+    }
+
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        guard !(NSApp.keyWindow?.firstResponder is NSTextView), !entries.isEmpty else {
             return
         }
-        deleteEntry(selectedEntryID)
+
+        let currentIndex: Int
+        if let last = lastClickedIndex,
+           entries.indices.contains(last),
+           selectedEntryIDs.contains(entries[last].id) {
+            currentIndex = last
+        } else if let selectedIndex = entries.firstIndex(where: { selectedEntryIDs.contains($0.id) }) {
+            currentIndex = selectedIndex
+        } else {
+            currentIndex = 0
+        }
+
+        let nextIndex: Int
+        switch direction {
+        case .up:
+            nextIndex = max(0, currentIndex - 1)
+        case .down:
+            nextIndex = min(entries.count - 1, currentIndex + 1)
+        default:
+            return
+        }
+
+        selectedEntryIDs = [entries[nextIndex].id]
+        lastClickedIndex = nextIndex
+    }
+
+    private func undoAction() {
+        guard !undoStack.isEmpty else { return }
+        entries = undoStack.removeLast()
+        selectedEntryIDs = []
+        lastClickedIndex = nil
+        statusText = "Undone"
+    }
+
+    private func deleteSelectedEntries() {
+        let idsToDelete = selectedEntryIDs
+        guard !idsToDelete.isEmpty else { return }
+        saveUndoSnapshot()
+        entries.removeAll { idsToDelete.contains($0.id) }
+        entries = MusicEDLParser.renumberEvents(entries)
+        selectedEntryIDs = []
+        lastClickedIndex = nil
     }
 
     private func deleteEntry(_ entryID: MusicEDLEntry.ID) {
-        guard let index = entries.firstIndex(where: { $0.id == entryID }) else {
-            return
-        }
-
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        saveUndoSnapshot()
         let name = entries[index].clipName
         entries.remove(at: index)
         entries = MusicEDLParser.renumberEvents(entries)
-        selectedEntryID = entries.indices.contains(index) ? entries[index].id : entries.last?.id
+        selectedEntryIDs.remove(entryID)
+        if selectedEntryIDs.isEmpty && !entries.isEmpty {
+            let newIdx = min(index, entries.count - 1)
+            selectedEntryIDs = [entries[newIdx].id]
+        }
         statusText = "Deleted row: \(name)"
+    }
+
+    private func mergeSelectedEntries() {
+        guard selectedEntryIDs.count >= 2 else { return }
+
+        let selectedIndices = entries.indices.filter { selectedEntryIDs.contains(entries[$0].id) }.sorted()
+        guard let firstIndex = selectedIndices.first,
+              let lastIndex = selectedIndices.last,
+              firstIndex < entries.count,
+              lastIndex < entries.count,
+              firstIndex != lastIndex else { return }
+
+        let selected = selectedIndices.map { entries[$0] }
+        let first = entries[firstIndex]
+        let last = entries[lastIndex]
+
+        saveUndoSnapshot()
+
+        var merged = first
+        merged.startTime = first.startTime
+        merged.endTime = last.endTime
+
+        let dur = MusicEDLParser.displayDuration(from: merged.startTime, to: merged.endTime, fps: frameRate)
+        if !dur.isEmpty { merged.duration = dur }
+
+        let idsToRemove = Set(selected.dropFirst().map(\.id))
+        entries.removeAll { idsToRemove.contains($0.id) }
+
+        if let idx = entries.firstIndex(where: { $0.id == first.id }) { entries[idx] = merged }
+        entries = MusicEDLParser.renumberEvents(entries)
+        selectedEntryIDs = [first.id]
+        lastClickedIndex = entries.firstIndex(where: { $0.id == first.id })
+        statusText = "Merged \(selected.count) rows"
     }
 
     private func clearEDL() {
         endTextEditing()
         entries = []
-        selectedEntryID = nil
+        selectedEntryIDs = []
+        lastClickedIndex = nil
         sessionName = ""
         foundTracks = []
         missingTracks = []
@@ -648,6 +858,7 @@ struct ContentView: View {
             return
         }
 
+        saveUndoSnapshot()
         updateEntry(entryID) { entry in
             entry[keyPath: keyPath] = value
             let duration = MusicEDLParser.displayDuration(from: entry.startTime, to: entry.endTime, fps: frameRate)
@@ -655,7 +866,7 @@ struct ContentView: View {
                 entry.duration = duration
             }
         }
-        selectedEntryID = entryID
+        selectedEntryIDs = [entryID]
         statusText = "Timecode pasted"
     }
 
@@ -696,6 +907,36 @@ struct ContentView: View {
     }
 
     private func importMarkers() {
+        openMarkerSettings()
+    }
+
+    private func openMarkerSettings() {
+        showMarkerSettings = true
+        refreshMarkerRulerOptions()
+    }
+
+    private func refreshMarkerRulerOptions() {
+        isLoadingMarkerRulers = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let payload = PTSLManager.shared().availableMarkerRulerNames()
+            DispatchQueue.main.async {
+                isLoadingMarkerRulers = false
+                let names = (payload["ruler_names"] as? [String] ?? [])
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                let uniqueNames = Array(NSOrderedSet(array: ["Markers"] + names)) as? [String] ?? ["Markers"]
+                markerRulerOptions = uniqueNames
+                if !markerRulerName.isEmpty && !markerRulerOptions.contains(markerRulerName) {
+                    markerRulerOptions.append(markerRulerName)
+                }
+                if markerRulerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    markerRulerName = markerRulerOptions.first ?? "Markers"
+                }
+            }
+        }
+    }
+
+    private func performImportMarkers() {
         guard !entries.isEmpty else {
             statusText = "No rows to import"
             return
@@ -742,7 +983,9 @@ struct ContentView: View {
                 "name": markerName(for: entry, index: index),
                 "start_time": entry.startTime,
                 "end_time": entry.endTime,
-                "comments": markerComment(for: entry)
+                "comments": markerComment(for: entry),
+                "color_index": markerColorIndex,
+                "ruler_name": markerRulerName
             ]
         }
     }
@@ -764,24 +1007,26 @@ struct ContentView: View {
     }
 
     private func exportXLSX() {
+        showXLSXPreview = true
+    }
+
+    private func performExportXLSX() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = defaultXLSXName()
         panel.allowedContentTypes = [.excelWorkbook]
         panel.canCreateDirectories = true
         panel.begin { response in
-            guard response == .OK, let url = panel.url else {
-                return
-            }
-
+            guard response == .OK, let url = panel.url else { return }
             do {
                 let data = try XLSXExporter.makeWorkbook(
                     entries: entries,
                     sessionName: sessionName,
                     selectedTracks: foundTracks,
-                    offset: normalizedOffsetInput()
+                    offset: normalizedOffsetInput(),
+                    settings: xlsxSettings
                 )
                 try data.write(to: url, options: .atomic)
-                statusText = "XLSX exporte: \(url.lastPathComponent)"
+                statusText = "XLSX exporté: \(url.lastPathComponent)"
             } catch {
                 statusText = error.localizedDescription
             }
@@ -802,7 +1047,8 @@ private enum XLSXExporter {
         entries: [MusicEDLEntry],
         sessionName: String,
         selectedTracks: [String],
-        offset: String
+        offset: String,
+        settings: XLSXExportSettings = XLSXExportSettings()
     ) throws -> Data {
         var archive = ZipArchive()
         let worksheet = worksheetXML(
@@ -818,7 +1064,7 @@ private enum XLSXExporter {
         archive.add(path: "docProps/core.xml", text: coreXML(sessionName: sessionName))
         archive.add(path: "xl/workbook.xml", text: workbookXML)
         archive.add(path: "xl/_rels/workbook.xml.rels", text: workbookRelsXML)
-        archive.add(path: "xl/styles.xml", text: stylesXML)
+        archive.add(path: "xl/styles.xml", text: stylesXML(settings: settings))
         archive.add(path: "xl/worksheets/sheet1.xml", text: worksheet)
         return archive.finalize()
     }
@@ -835,7 +1081,7 @@ private enum XLSXExporter {
         let title = "\(sessionName.isEmpty ? "Music" : sessionName) EDL"
         let subtitle = "Date: \(displayDate())"
         let headers = ["No", "Name", "In", "Out", "Duration"]
-        let headerStyles = [8, 9, 10, 11, 12]
+        let headerStyles = [2, 2, 2, 2, 2]
 
         let titleCells = (1...5).map { column in
             cell(column: column, row: 1, value: column == 1 ? title : "", style: 1)
@@ -849,14 +1095,15 @@ private enum XLSXExporter {
 
         let entryRows = entries.enumerated().map { index, entry in
             let rowIndex = index + firstEntryRowIndex
-            let style = index.isMultiple(of: 2) ? 3 : 4
-            let name = titleCaseName(entry.clipName)
+            let nameStyle = index.isMultiple(of: 2) ? 3 : 4
+            let rowStyle = index.isMultiple(of: 2) ? 5 : 6
+            let name = entry.clipName
             return row(rowIndex, height: rowHeight(forName: name), cells: [
-                cell(column: 1, row: rowIndex, value: entry.event, style: 5),
-                cell(column: 2, row: rowIndex, value: name, style: style),
-                cell(column: 3, row: rowIndex, value: entry.startTime, style: 6),
-                cell(column: 4, row: rowIndex, value: entry.endTime, style: 6),
-                cell(column: 5, row: rowIndex, value: entry.duration, style: 6)
+                cell(column: 1, row: rowIndex, value: entry.event, style: rowStyle),
+                cell(column: 2, row: rowIndex, value: name, style: nameStyle),
+                cell(column: 3, row: rowIndex, value: entry.startTime, style: rowStyle),
+                cell(column: 4, row: rowIndex, value: entry.endTime, style: rowStyle),
+                cell(column: 5, row: rowIndex, value: entry.duration, style: rowStyle)
             ])
         }.joined()
 
@@ -939,27 +1186,6 @@ private enum XLSXExporter {
         return formatter.string(from: Date())
     }
 
-    private static func titleCaseName(_ value: String) -> String {
-        let separators = CharacterSet(charactersIn: " \t\n\r-_./")
-        var result = ""
-        var shouldCapitalize = true
-
-        for scalar in value.unicodeScalars {
-            let character = String(scalar)
-            if separators.contains(scalar) {
-                result += character
-                shouldCapitalize = true
-            } else if shouldCapitalize {
-                result += character.uppercased()
-                shouldCapitalize = false
-            } else {
-                result += character.lowercased()
-            }
-        }
-
-        return result
-    }
-
     private static let contentTypesXML = """
     <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -1013,69 +1239,84 @@ private enum XLSXExporter {
     </workbook>
     """
 
-    private static let workbookRelsXML = """
-    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-      <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-      <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-    </Relationships>
-    """
+        private static let workbookRelsXML = """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+            <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+        </Relationships>
+        """
 
-    private static let stylesXML = """
-    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-    <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-      <fonts count="6">
-        <font><sz val="11"/><color rgb="FF17202A"/><name val="Aptos"/></font>
-        <font><b/><sz val="16"/><color rgb="FF1F2933"/><name val="Aptos Display"/></font>
-        <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font>
-        <font><sz val="11"/><color rgb="FF17202A"/><name val="Aptos"/></font>
-        <font><i/><sz val="10"/><color rgb="FF585858"/><name val="Aptos"/></font>
-        <font><b/><sz val="11"/><color rgb="FF111111"/><name val="Aptos"/></font>
-      </fonts>
-      <fills count="11">
-        <fill><patternFill patternType="none"/></fill>
-        <fill><patternFill patternType="gray125"/></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFA66E4A"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFF4F4F4"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFC67FAE"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFD7E8BC"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FF98DDDE"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFA6BE47"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FF2E5283"/><bgColor indexed="64"/></patternFill></fill>
-      </fills>
-      <borders count="2">
-        <border><left/><right/><top/><bottom/><diagonal/></border>
-        <border>
-          <left style="thin"><color rgb="FFD9D9D9"/></left>
-          <right style="thin"><color rgb="FFD9D9D9"/></right>
-          <top style="thin"><color rgb="FFD9D9D9"/></top>
-          <bottom style="thin"><color rgb="FFD9D9D9"/></bottom>
-          <diagonal/>
-        </border>
-      </borders>
-      <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-      <cellXfs count="13">
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
-        <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="4" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="5" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="5" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="5" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
-      </cellXfs>
-      <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-      <dxfs count="0"/>
-      <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleMedium9"/>
-    </styleSheet>
-    """
+        private static func colorToHex(_ color: Color) -> String {
+                let ns = NSColor(color).usingColorSpace(.sRGB) ?? NSColor(color)
+                var r: CGFloat = 0
+                var g: CGFloat = 0
+                var b: CGFloat = 0
+                var a: CGFloat = 0
+                ns.getRed(&r, green: &g, blue: &b, alpha: &a)
+                return String(format: "FF%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+        }
+
+        private static func stylesXML(settings: XLSXExportSettings) -> String {
+                let headerHex = colorToHex(settings.headerFill)
+                let evenHex = colorToHex(settings.rowFillEven)
+                let oddHex = colorToHex(settings.rowFillOdd)
+                return """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                    <fonts count="6">
+                        <font><sz val="11"/><color rgb="FF17202A"/><name val="Calibri"/></font>
+                        <font><b/><sz val="16"/><color rgb="FF1F2933"/><name val="Calibri"/></font>
+                        <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+                        <font><sz val="11"/><color rgb="FF17202A"/><name val="Calibri"/></font>
+                        <font><i/><sz val="10"/><color rgb="FF585858"/><name val="Calibri"/></font>
+                        <font><b/><sz val="11"/><color rgb="FF111111"/><name val="Calibri"/></font>
+                    </fonts>
+                    <fills count="11">
+                        <fill><patternFill patternType="none"/></fill>
+                        <fill><patternFill patternType="gray125"/></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="\(headerHex)"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="\(evenHex)"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="\(oddHex)"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FFC67FAE"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FFD7E8BC"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FF98DDDE"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FFA6BE47"/><bgColor indexed="64"/></patternFill></fill>
+                        <fill><patternFill patternType="solid"><fgColor rgb="FF2E5283"/><bgColor indexed="64"/></patternFill></fill>
+                    </fills>
+                    <borders count="2">
+                        <border><left/><right/><top/><bottom/><diagonal/></border>
+                        <border>
+                            <left style="thin"><color rgb="FFD9D9D9"/></left>
+                            <right style="thin"><color rgb="FFD9D9D9"/></right>
+                            <top style="thin"><color rgb="FFD9D9D9"/></top>
+                            <bottom style="thin"><color rgb="FFD9D9D9"/></bottom>
+                            <diagonal/>
+                        </border>
+                    </borders>
+                    <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                    <cellXfs count="13">
+                        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+                        <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment horizontal="left" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+                        <xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+                        <xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="4" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment horizontal="left" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="5" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="5" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                        <xf numFmtId="0" fontId="5" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf>
+                    </cellXfs>
+                    <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+                    <dxfs count="0"/>
+                    <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleMedium9"/>
+                </styleSheet>
+                """
+        }
 }
 
 private struct ZipArchive {
@@ -1192,6 +1433,286 @@ private extension UTType {
     static let excelWorkbook = UTType(filenameExtension: "xlsx")!
 }
 
+struct XLSXExportSettings {
+    var headerFill: Color = AppTheme.backgroundTop
+    var rowFillEven: Color = Color(hex: "FFFFFF")
+    var rowFillOdd: Color = Color(hex: "F4F4F4")
+}
+
+private struct NameCellView: View {
+    @Binding var value: String
+
+    var body: some View {
+        TextField("", text: $value, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12, weight: .regular))
+            .foregroundColor(AppTheme.textPrimary)
+            .lineLimit(1...4)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+    }
+}
+
+private struct MarkersSettingsSheet: View {
+    @Binding var colorIndex: Int
+    @Binding var rulerName: String
+    let rulerOptions: [String]
+    let isLoadingRulers: Bool
+    let onRefreshRulers: () -> Void
+    let onImport: () -> Void
+    let onCancel: () -> Void
+
+    private let markerColors: [Color] = [
+        Color(hex: "6F34EE"), Color(hex: "942FDB"), Color(hex: "E465C4"), Color(hex: "F83692"),
+        Color(hex: "F71E10"), Color(hex: "FF6E27"), Color(hex: "F8AD18"), Color(hex: "EAE500"),
+        Color(hex: "B6E64B"), Color(hex: "4DFF4D"), Color(hex: "4DFFE1"), Color(hex: "4DB8FF"),
+        Color(hex: "4D6AFF"), Color.white, Color(hex: "B6B6B6"), Color(hex: "222222")
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.buttonMarkers)
+                Text("Import Markers to Pro Tools")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(AppTheme.textPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            Divider().overlay(AppTheme.softBorder)
+
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Marker Color")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.textSecondary)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            ForEach(1...8, id: \.self) { i in colorButton(i) }
+                        }
+                        HStack(spacing: 8) {
+                            ForEach(9...16, id: \.self) { i in colorButton(i) }
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Marker Track")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.textSecondary)
+                        Spacer()
+                        Button(action: onRefreshRulers) {
+                            if isLoadingRulers {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .frame(width: 14, height: 14)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(AppTheme.textSecondary)
+                        .help("Refresh marker tracks from current session")
+                    }
+
+                    Picker("", selection: $rulerName) {
+                        ForEach(rulerOptions, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 260, alignment: .leading)
+
+                    TextField("Markers", text: $rulerName)
+                        .gogoTextField(font: .system(size: 13))
+                        .frame(maxWidth: 260)
+                }
+            }
+            .padding(24)
+
+            Divider().overlay(AppTheme.softBorder)
+
+            HStack {
+                Button("Cancel") { onCancel() }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(AppTheme.textSecondary)
+                Spacer()
+                Button("Import to Pro Tools") { onImport() }
+                    .keyboardShortcut(.return, modifiers: [])
+                    .buttonStyle(GogoToolbarButtonStyle(tint: AppTheme.buttonMarkers))
+                    .frame(width: 180)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .frame(width: 500)
+        .background(AppTheme.backgroundBottom)
+        .preferredColorScheme(.dark)
+    }
+
+    private func colorButton(_ index: Int) -> some View {
+        let color = markerColors[index - 1]
+        let isSelected = colorIndex == index
+        return Button(action: { colorIndex = index }) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(color)
+                .frame(width: 40, height: 40)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isSelected ? Color.white : Color.gray.opacity(0.3), lineWidth: isSelected ? 2.5 : 1)
+                )
+                .shadow(color: isSelected ? color.opacity(0.5) : .clear, radius: 6, x: 0, y: 3)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct XLSXPreviewSheet: View {
+    let entries: [MusicEDLEntry]
+    let sessionName: String
+    @Binding var settings: XLSXExportSettings
+    let onExport: () -> Void
+    let onCancel: () -> Void
+
+    private let colHeaders = ["No", "Name", "In", "Out", "Duration"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "doc.richtext")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(AppTheme.buttonExport)
+                Text("XLSX Export")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(AppTheme.textPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            Divider().overlay(AppTheme.softBorder)
+
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Preview")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.textSecondary)
+                    previewTable
+                }
+                .frame(maxWidth: .infinity)
+
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Colors")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppTheme.textSecondary)
+                    colorRow("Header row", binding: $settings.headerFill)
+                    colorRow("Rows (even)", binding: $settings.rowFillEven)
+                    colorRow("Rows (odd)", binding: $settings.rowFillOdd)
+                }
+                .frame(width: 200)
+            }
+            .padding(24)
+
+            Divider().overlay(AppTheme.softBorder)
+
+            HStack {
+                Button("Cancel") { onCancel() }
+                    .buttonStyle(.borderless)
+                    .foregroundColor(AppTheme.textSecondary)
+                Spacer()
+                Button("Export") { onExport() }
+                    .keyboardShortcut(.return, modifiers: [])
+                    .buttonStyle(GogoToolbarButtonStyle(tint: AppTheme.buttonExport))
+                    .frame(width: 120)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+        }
+        .frame(minWidth: 680, minHeight: 420)
+        .background(AppTheme.backgroundBottom)
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private var previewTable: some View {
+        let preview = Array(entries.prefix(6))
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(colHeaders, id: \.self) { h in
+                    Text(h)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: h == "Name" ? .leading : .center)
+                        .padding(.horizontal, 6)
+                        .background(settings.headerFill)
+                }
+            }
+            ForEach(Array(preview.enumerated()), id: \.offset) { i, entry in
+                let fill = i.isMultiple(of: 2) ? settings.rowFillEven : settings.rowFillOdd
+                HStack(spacing: 0) {
+                    previewCell(entry.event, fill: fill, align: .center)
+                    previewCell(entry.clipName, fill: fill, align: .leading)
+                    previewCell(entry.startTime, fill: fill, align: .center)
+                    previewCell(entry.endTime, fill: fill, align: .center)
+                    previewCell(entry.duration, fill: fill, align: .center)
+                }
+            }
+            if entries.count > 6 {
+                HStack {
+                    Text("… \(entries.count - 6) more rows")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.textMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                    Spacer()
+                }
+                .background(AppTheme.card.opacity(0.5))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func previewCell(_ value: String, fill: Color, align: Alignment) -> some View {
+        Text(value)
+            .font(.system(size: 11))
+            .foregroundColor(.black.opacity(0.8))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: 22, alignment: align)
+            .padding(.horizontal, 6)
+            .background(fill)
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(Color.gray.opacity(0.15)).frame(width: 1)
+            }
+    }
+
+    private func colorRow(_ label: String, binding: Binding<Color>) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(AppTheme.textPrimary)
+            Spacer()
+            ColorPicker("", selection: binding, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 40, height: 28)
+        }
+    }
+}
+
 private struct GogoToolbarButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -1258,7 +1779,7 @@ struct MusicEDLColorsView: View {
         MusicEDLColorSection(
             id: "buttons",
             title: "Buttons",
-            keys: [.buttonLoad, .buttonMarkers, .buttonDelete, .buttonCopy, .buttonExport, .buttonColors]
+            keys: [.buttonLoad, .buttonMarkers, .buttonDelete, .buttonMerge, .buttonExport]
         )
     ]
 
@@ -1282,7 +1803,7 @@ struct MusicEDLColorsView: View {
                 Button("Reset Defaults") {
                     colorTheme.resetDefaults()
                 }
-                .buttonStyle(GogoToolbarButtonStyle(tint: AppTheme.buttonColors))
+                .buttonStyle(GogoToolbarButtonStyle(tint: AppTheme.buttonMerge))
             }
 
             ScrollView {
