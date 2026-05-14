@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09705E40846E22511B48D54C /* XLSXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037B56C1AAC9E770C8B72D24 /* XLSXExporter.swift */; };
+		0DD8DFC40466546954ED3A37 /* MarkersSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FE813DD165BD1A9573EF21 /* MarkersSettingsSheet.swift */; };
+		469CE7399C1263DEF5DDE525 /* NameCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5981F204915E75A7B198DB6 /* NameCellView.swift */; };
+		5757635DB605A9B9DC710FAF /* MusicEDLColorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB76AC88A9BCBA1A285C54CB /* MusicEDLColorsView.swift */; };
+		9506D5951C26296A5ED7DD8A /* GogoToolbarButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A89FAA1B71097DCA7BEB80 /* GogoToolbarButtonStyle.swift */; };
 		A10000000000000000000011 /* OdileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* OdileApp.swift */; };
 		A10000000000000000000012 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* ContentView.swift */; };
 		A10000000000000000000013 /* MusicEDLEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* MusicEDLEntry.swift */; };
@@ -17,6 +22,8 @@
 		A10000000000000000000018 /* PTSLC_CPP.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000A /* PTSLC_CPP.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A10000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* Assets.xcassets */; };
 		A10000000000000000000064 /* Lobster-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000065 /* Lobster-Regular.ttf */; };
+		E3AC82833437CA436133432E /* OdileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FE8943DD43C591DA33C6CDE /* OdileViewModel.swift */; };
+		EFD5ED25A1B2A3C72E977315 /* XLSXPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E93D4988461C91C0D64553 /* XLSXPreviewSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -33,6 +40,12 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		037B56C1AAC9E770C8B72D24 /* XLSXExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = XLSXExporter.swift; path = App/Export/XLSXExporter.swift; sourceTree = "<group>"; };
+		33B38FD7173D39D7825D4AD8 /* GeneratedAssetSymbols.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeneratedAssetSymbols.swift; path = build/Build/Intermediates.noindex/Odile.build/Debug/Odile.build/DerivedSources/GeneratedAssetSymbols.swift; sourceTree = "<group>"; };
+		3FE8943DD43C591DA33C6CDE /* OdileViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OdileViewModel.swift; path = App/OdileViewModel.swift; sourceTree = "<group>"; };
+		56FE813DD165BD1A9573EF21 /* MarkersSettingsSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarkersSettingsSheet.swift; path = App/Views/Sheets/MarkersSettingsSheet.swift; sourceTree = "<group>"; };
+		86E93D4988461C91C0D64553 /* XLSXPreviewSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = XLSXPreviewSheet.swift; path = App/Views/Sheets/XLSXPreviewSheet.swift; sourceTree = "<group>"; };
+		A0A89FAA1B71097DCA7BEB80 /* GogoToolbarButtonStyle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GogoToolbarButtonStyle.swift; path = App/Components/GogoToolbarButtonStyle.swift; sourceTree = "<group>"; };
 		A10000000000000000000001 /* OdileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OdileApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* MusicEDLEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicEDLEntry.swift; sourceTree = "<group>"; };
@@ -45,6 +58,8 @@
 		A1000000000000000000000A /* PTSLC_CPP.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = PTSLC_CPP.framework; sourceTree = "<group>"; };
 		A1000000000000000000000B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000065 /* Lobster-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Lobster-Regular.ttf"; sourceTree = "<group>"; };
+		DB76AC88A9BCBA1A285C54CB /* MusicEDLColorsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MusicEDLColorsView.swift; path = App/Views/Sheets/MusicEDLColorsView.swift; sourceTree = "<group>"; };
+		F5981F204915E75A7B198DB6 /* NameCellView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NameCellView.swift; path = App/Components/NameCellView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +80,14 @@
 				A10000000000000000000031 /* App */,
 				A10000000000000000000035 /* Vendor */,
 				A10000000000000000000032 /* Products */,
+				3FE8943DD43C591DA33C6CDE /* OdileViewModel.swift */,
+				F5981F204915E75A7B198DB6 /* NameCellView.swift */,
+				A0A89FAA1B71097DCA7BEB80 /* GogoToolbarButtonStyle.swift */,
+				037B56C1AAC9E770C8B72D24 /* XLSXExporter.swift */,
+				86E93D4988461C91C0D64553 /* XLSXPreviewSheet.swift */,
+				DB76AC88A9BCBA1A285C54CB /* MusicEDLColorsView.swift */,
+				56FE813DD165BD1A9573EF21 /* MarkersSettingsSheet.swift */,
+				33B38FD7173D39D7825D4AD8 /* GeneratedAssetSymbols.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -232,6 +255,13 @@
 				A10000000000000000000013 /* MusicEDLEntry.swift in Sources */,
 				A10000000000000000000014 /* AppTheme.swift in Sources */,
 				A10000000000000000000015 /* Extensions.swift in Sources */,
+				E3AC82833437CA436133432E /* OdileViewModel.swift in Sources */,
+				469CE7399C1263DEF5DDE525 /* NameCellView.swift in Sources */,
+				9506D5951C26296A5ED7DD8A /* GogoToolbarButtonStyle.swift in Sources */,
+				09705E40846E22511B48D54C /* XLSXExporter.swift in Sources */,
+				EFD5ED25A1B2A3C72E977315 /* XLSXPreviewSheet.swift in Sources */,
+				5757635DB605A9B9DC710FAF /* MusicEDLColorsView.swift in Sources */,
+				0DD8DFC40466546954ED3A37 /* MarkersSettingsSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

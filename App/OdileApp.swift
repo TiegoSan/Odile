@@ -17,15 +17,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var startupSplashPanel: NSPanel?
     private var colorsWindow: NSWindow?
     private var configuredWindows = Set<ObjectIdentifier>()
-    private var isLaunchSplashCompleted = false
+    @Published var isLaunchSplashCompleted = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Observers to mask any window layout updates before splash completes
+        NotificationCenter.default.addObserver(forName: NSApplication.willUpdateNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, !self.isLaunchSplashCompleted else { return }
+            self.hideMainWindows()
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         showStartupSplash()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            self.hideMainWindows()
-        }
-
+        hideMainWindows()
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
             self.completeStartupSplash()
         }
@@ -74,6 +78,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         let windowID = ObjectIdentifier(window)
         let isFirstConfiguration = configuredWindows.insert(windowID).inserted
+        
+        if isFirstConfiguration && !isLaunchSplashCompleted {
+            window.alphaValue = 0
+        }
 
         window.title = "Odile"
         window.titleVisibility = .hidden
@@ -153,7 +161,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         for window in mainAppWindows {
             configureMainWindow(window)
             window.alphaValue = 0
-            window.orderOut(nil)
         }
     }
 

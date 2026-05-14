@@ -1,7 +1,11 @@
 #import "PTSLWrapper.h"
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation-deprecated-sync"
+#pragma clang diagnostic ignored "-Wquoted-include-in-framework-header"
 #include <PTSLC_CPP/CppPTSLClient.h>
 #include <PTSLC_CPP/CppPTSLCommon.h>
+#pragma clang diagnostic pop
 
 using namespace PTSLC_CPP;
 
@@ -56,7 +60,7 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
         return @{
             @"ok": @NO,
             @"is_ready": @NO,
-            @"error": err.length > 0 ? err : @"HostReadyCheck failed"
+            @"error": [self commandErrorMessage:err fallback:@"Pro Tools offline"]
         };
     }
 
@@ -422,7 +426,7 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
     CppPTSLResponse readyResponse = _client->SendRequest(readyRequest).get();
     if (readyResponse.GetStatus() != TaskStatus::TStatus_Completed) {
         NSString *err = [NSString stringWithUTF8String:readyResponse.GetResponseErrorJson().c_str()];
-        [self fillError:error code:901 message:[self commandErrorMessage:err fallback:@"Pro Tools n'est pas disponible"]];
+        [self fillError:error code:901 message:[self commandErrorMessage:err fallback:@"Pro Tools is not available"]];
         return NO;
     }
 
@@ -514,15 +518,13 @@ NSString *const PTSLRuntimeLogMessageKey = @"message";
     NSDictionary *payload = [self parseJson:errorJson];
     NSString *details = [payload[@"details"] isKindOfClass:[NSString class]] ? payload[@"details"] : @"";
     NSString *message = [payload[@"message"] isKindOfClass:[NSString class]] ? payload[@"message"] : @"";
-    if (details.length > 0) {
-        return details;
-    }
-    if (message.length > 0) {
-        return message;
-    }
-    if (errorJson.length > 0) {
-        return errorJson;
-    }
+    NSString *errorType = [payload[@"error_type"] isKindOfClass:[NSString class]] ? payload[@"error_type"] : @"";
+    
+    if (details.length > 0) return details;
+    if (message.length > 0) return message;
+    if (errorType.length > 0) return errorType;
+    
+    // Avoid returning huge JSON strings to the UI which will get truncated
     return fallback ?: @"Unknown PTSL error";
 }
 
