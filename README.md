@@ -26,3 +26,10 @@ xcodebuild -project Odile.xcodeproj -scheme Odile -configuration Debug build
 ```
 
 Pro Tools doit etre lance avec une session ouverte pour charger une EDL reelle.
+
+## Architecture
+
+L'application a été récemment migrée vers une architecture claire composant de :
+- L'architecture **MVVM (Model-View-ViewModel)** via `OdileViewModel.swift` pour stocker tout l'état de l'application.
+- `ContentView.swift` : L'interface SwiftUI principale, qui ne contient désormais plus de logique métier.
+- L'interface C++ de Pro Tools `PTSLWrapper.mm` est propre avec peu/pas de warnings de compilation et analyse intelligemment les erreurs pour l'interface utilisateur.
