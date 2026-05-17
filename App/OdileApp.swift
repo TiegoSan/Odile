@@ -16,14 +16,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private let splashIdentifier = NSUserInterfaceItemIdentifier("OdileSplashPanel")
     private var startupSplashPanel: NSPanel?
     private var colorsWindow: NSWindow?
+    private var supportWindow: NSWindow?
     private var configuredWindows = Set<ObjectIdentifier>()
     @Published var isLaunchSplashCompleted = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Observers to mask any window layout updates before splash completes
         NotificationCenter.default.addObserver(forName: NSApplication.willUpdateNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self = self, !self.isLaunchSplashCompleted else { return }
-            self.hideMainWindows()
+            Task { @MainActor [weak self] in
+                guard let self = self, !self.isLaunchSplashCompleted else { return }
+                self.hideMainWindows()
+            }
         }
     }
 
@@ -33,6 +36,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
             self.completeStartupSplash()
         }
+    }
+
+    func showSupportWindow() {
+        if supportWindow == nil {
+            let hostingController = NSHostingController(
+                rootView: SupportView()
+            )
+
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = ""
+            window.styleMask = [.titled, .closable, .fullSizeContentView]
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.tabbingMode = .disallowed
+            window.isReleasedWhenClosed = false
+            window.isMovableByWindowBackground = true
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+            supportWindow = window
+        }
+
+        supportWindow?.center()
+        supportWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func showColorsWindow() {
@@ -228,6 +257,10 @@ struct OdileApp: App {
                     appDelegate.showColorsWindow()
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
+                Button("Support") {
+                    appDelegate.showSupportWindow()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
             }
         }
     }

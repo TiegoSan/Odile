@@ -82,11 +82,11 @@ enum MusicEDLColorKey: String, CaseIterable, Identifiable {
         case .success: return "#20EFA3"
         case .warning: return "#FFE347"
         case .danger: return "#FF3366"
-        case .buttonLoad: return "#FFE347"
-        case .buttonMarkers: return "#FF4FD8"
-        case .buttonDelete: return "#FF3366"
-        case .buttonMerge: return "#20EFA3"
-        case .buttonExport: return "#27A9FF"
+        case .buttonLoad: return "#E3BD33"
+        case .buttonMarkers: return "#C67FAE"
+        case .buttonDelete: return "#E2552C"
+        case .buttonMerge: return "#A6BE47"
+        case .buttonExport: return "#717388"
         }
     }
 
@@ -114,7 +114,7 @@ final class MusicEDLColorTheme: ObservableObject {
 
     @Published private(set) var refreshToken = UUID()
 
-    private let userDefaultsKey = "gogolabs.music-edl.colorTheme.v1"
+    private let userDefaultsKey = "gogolabs.music-edl.colorTheme.v2"
     private let userDefaults: UserDefaults
     private var values: [String: String]
 

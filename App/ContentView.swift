@@ -20,7 +20,7 @@ struct ContentView: View {
             Divider().overlay(AppTheme.softBorder)
             footer
         }
-        .background(AppTheme.windowGradient)
+        .background(AppTheme.windowGradient.opacity(0.95))
         .foregroundColor(AppTheme.textPrimary)
         .preferredColorScheme(.dark)
         .opacity(appDelegate.isLaunchSplashCompleted ? 1.0 : 0.0)
@@ -62,29 +62,29 @@ struct ContentView: View {
     }
 
     private var toolbar: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             Image("LogoGogoLabs")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 110, height: 110)
-                .offset(x: 20, y: -10)
+                .frame(width: 90, height: 90)
+                .offset(x: 25, y: -5)
             
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 14) {
                     Text("Odile")
-                        .font(.custom("Lobster-Regular", size: 65))
+                        .font(.custom("Lobster-Regular", size: 48))
                         .foregroundColor(AppTheme.textPrimary)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                         .offset(y: 0)
 
                     Text(appVersionBadge)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.textPrimary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
                         .background(
                             Capsule(style: .continuous)
                                 .fill(AppTheme.accent.opacity(0.82))
@@ -93,20 +93,20 @@ struct ContentView: View {
                             Capsule(style: .continuous)
                                 .stroke(AppTheme.border, lineWidth: 1)
                         )
-                        .offset(y: -18)
+                        .offset(y: -12)
                 }
 
                 Text("EDL Maker assistant")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.textPrimary.opacity(0.85))
-                    .offset(y: -12)
+                    .offset(y: -4)
             }
-            .frame(height: 98, alignment: .center)
-            .offset(y: -17)
+            .frame(height: 60, alignment: .center)
+            .offset(y: -4)
             
             Spacer()
 
-            HStack(alignment: .top, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
                 toolbarControl(width: 54, help: " ") {
                     Picker("", selection: $viewModel.offsetSign) {
                         Text("+").tag("+")
@@ -134,14 +134,14 @@ struct ContentView: View {
                 .keyboardShortcut("r", modifiers: [.command])
             toolbarButton(viewModel.isImportingMarkers ? "Importing" : "Markers", systemImage: "mappin.and.ellipse", help: "Send markers.", tint: AppTheme.buttonMarkers, disabled: viewModel.entries.isEmpty || viewModel.isImportingMarkers, action: viewModel.openMarkerSettings)
             toolbarButton("Delete", systemImage: "trash", help: "Remove row.", tint: AppTheme.buttonDelete, disabled: viewModel.selectedEntryIDs.isEmpty, action: viewModel.deleteSelectedEntries)
-            toolbarButton("Merge", systemImage: "arrow.triangle.merge", help: "Merge rows.", tint: AppTheme.buttonDelete, disabled: viewModel.selectedEntryIDs.count < 2, action: viewModel.mergeSelectedEntries)
+            toolbarButton("Merge", systemImage: "arrow.triangle.merge", help: "Merge rows.", tint: AppTheme.buttonMerge, disabled: viewModel.selectedEntryIDs.count < 2, action: viewModel.mergeSelectedEntries)
             toolbarButton("XLSX", systemImage: "square.and.arrow.down", help: "Export file.", tint: AppTheme.buttonExport, disabled: viewModel.entries.isEmpty, action: { viewModel.showXLSXPreview = true })
 
             Spacer(minLength: 0)
         }
         .controlSize(.regular)
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.clear)
     }
