@@ -22,6 +22,7 @@ final class OdileViewModel: ObservableObject {
     @Published var columnWidths: [CGFloat] = [52, 540, 132, 132, 122]
     @Published var dragStartWidths: [Int: CGFloat] = [:]
     @Published var isProToolsOnline = false
+    @Published var isDemoMode = false
     @Published var showMarkerSettings = false
     @Published var markerColorIndex: Int = 1
     @Published var markerRulerName: String = "Markers"
@@ -67,7 +68,7 @@ undoAction() }
                     self.statusText = "Pro Tools ready"
                 } else {
                     isProToolsOnline = false
-                    self.statusText = (payload["error"] as? String) ?? "Pro Tools offline"
+                    self.statusText = (payload["error"] as? String) ?? "Pro Tools offline — use Demo Mode to review Odile"
                 }
             }
         }
@@ -79,6 +80,7 @@ undoAction() }
             return
         }
 
+        isDemoMode = false
         isLoading = true
         self.statusText = "Reading selected Pro Tools tracks..."
         entries = []
@@ -94,6 +96,26 @@ undoAction() }
                 handle(payload: payload)
             }
         }
+    }
+
+
+    func loadDemoMode() {
+        endTextEditing()
+        isLoading = false
+        isImportingMarkers = false
+        isDemoMode = true
+        isProToolsOnline = true
+        offsetSign = "+"
+        offsetInput = "00:00:00:00"
+        sessionName = "Odile Demo Session"
+        foundTracks = ["MX A", "MX B"]
+        missingTracks = []
+        markerRulerName = "Demo Markers"
+        markerRulerOptions = ["Markers", "Demo Markers", "Music Cues"]
+        rawSessionInfo = Self.demoSessionInfo
+        undoStack = []
+        applyParsedResult(parseTargets: foundTracks, updateStatus: false)
+        statusText = "Demo Mode loaded — edit, merge, export XLSX, and preview marker import"
     }
 
     func handle(payload: [AnyHashable: Any]) {
@@ -345,6 +367,7 @@ undoAction() }
         missingTracks = []
         mutedRegionCount = 0
         rawSessionInfo = ""
+        isDemoMode = false
         self.statusText = "Cleared"
     }
 
@@ -420,11 +443,24 @@ undoAction() }
     }
 
     func openMarkerSettings() {
+        if isDemoMode {
+            markerRulerOptions = Array(NSOrderedSet(array: ["Markers", "Demo Markers", "Music Cues", markerRulerName])) as? [String] ?? ["Markers", "Demo Markers", "Music Cues"]
+        } else {
+            refreshMarkerRulerOptions()
+        }
         showMarkerSettings = true
-        refreshMarkerRulerOptions()
     }
 
     func refreshMarkerRulerOptions() {
+        guard !isDemoMode else {
+            markerRulerOptions = ["Markers", "Demo Markers", "Music Cues"]
+            if !markerRulerName.isEmpty && !markerRulerOptions.contains(markerRulerName) {
+                markerRulerOptions.append(markerRulerName)
+            }
+            statusText = "Demo marker tracks refreshed"
+            return
+        }
+        guard !isLoadingMarkerRulers else { return }
         isLoadingMarkerRulers = true
         DispatchQueue.global(qos: .userInitiated).async {
             let payload = PTSLManager.shared().availableMarkerRulerNames()
@@ -461,6 +497,12 @@ undoAction() }
         }
 
         let markers = markerPayloads()
+
+        if isDemoMode {
+            self.statusText = "Demo marker import previewed: \(markers.count) marker(s) ready for \(markerRulerName)"
+            return
+        }
+
         isImportingMarkers = true
         self.statusText = "Importing markers into Pro Tools..."
 
@@ -549,6 +591,26 @@ undoAction() }
             .trimmingCharacters(in: CharacterSet(charactersIn: "._"))
         return "\(safe.isEmpty ? "Music_EDL" : safe)_music-edl.xlsx"
     }
+
+    private static let demoSessionInfo = """
+SESSION NAME: Odile Demo Session
+SESSION SAMPLE RATE: 48000
+SESSION BIT DEPTH: 24-bit
+SESSION TIME CODE RATE: 25 fps
+
+Track Name: MX A
+Event	Clip Name	Start Time	End Time	Duration	State	Source File
+1	opening theme	01:00:12:00	01:00:44:12	00:00:32:12	Unmuted	opening_theme.wav
+2	city pulse	01:01:05:08	01:01:36:18	00:00:31:10	Unmuted	city_pulse.wav
+3	mu tension bed	01:02:10:00	01:02:24:10	00:00:14:10	Muted	tension_muted.wav
+4	quiet piano	01:03:02:05	01:03:40:00	00:00:37:20	Unmuted	quiet_piano.wav
+
+Track Name: MX B
+Event	Clip Name	Start Time	End Time	Duration	State	Source File
+1	subway rhythm	01:01:44:00	01:02:02:12	00:00:18:12	Unmuted	subway_rhythm.wav
+2	final sting	01:04:05:00	01:04:16:08	00:00:11:08	Unmuted	final_sting.wav
+"""
+
 }
 
 

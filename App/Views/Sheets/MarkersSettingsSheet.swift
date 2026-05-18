@@ -5,6 +5,7 @@ struct MarkersSettingsSheet: View {
     @Binding var rulerName: String
     let rulerOptions: [String]
     let isLoadingRulers: Bool
+    let isDemoMode: Bool
     let onRefreshRulers: () -> Void
     let onImport: () -> Void
     let onCancel: () -> Void
@@ -22,7 +23,7 @@ struct MarkersSettingsSheet: View {
                 Image(systemName: "mappin.and.ellipse")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(AppTheme.buttonMarkers)
-                Text("Import Markers to Pro Tools")
+                Text(isDemoMode ? "Demo Marker Import" : "Import Markers to Pro Tools")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(AppTheme.textPrimary)
                 Spacer()
@@ -66,7 +67,7 @@ struct MarkersSettingsSheet: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundColor(AppTheme.textSecondary)
-                        .help("Refresh marker tracks from current session")
+                        .help(isDemoMode ? "Refresh demo marker tracks" : "Refresh marker tracks from current session")
                     }
 
                     Picker("", selection: $rulerName) {
@@ -92,7 +93,7 @@ struct MarkersSettingsSheet: View {
                     .buttonStyle(.borderless)
                     .foregroundColor(AppTheme.textSecondary)
                 Spacer()
-                Button("Import to Pro Tools") { onImport() }
+                Button(isDemoMode ? "Preview Demo Import" : "Import to Pro Tools") { onImport() }
                     .keyboardShortcut(.return, modifiers: [])
                     .buttonStyle(GogoToolbarButtonStyle(tint: AppTheme.buttonMarkers))
                     .frame(width: 180)
