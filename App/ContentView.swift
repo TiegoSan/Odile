@@ -28,7 +28,7 @@ struct ContentView: View {
         .onDisappear {
             if let m = undoEventMonitor { NSEvent.removeMonitor(m); undoEventMonitor = nil }
         }
-        .alert("Select tracks in Protools then click Load", isPresented: $viewModel.showLaunchInstruction) {
+        .alert("Select tracks in Pro Tools then click Load, or click Demo Mode to review without Pro Tools", isPresented: $viewModel.showLaunchInstruction) {
             Button("OK", role: .cancel) {}
         }
         .onDeleteCommand(perform: viewModel.deleteSelectedEntries)
@@ -39,6 +39,7 @@ struct ContentView: View {
                 rulerName: $viewModel.markerRulerName,
                 rulerOptions: viewModel.markerRulerOptions,
                 isLoadingRulers: viewModel.isLoadingMarkerRulers,
+                isDemoMode: viewModel.isDemoMode,
                 onRefreshRulers: viewModel.refreshMarkerRulerOptions,
                 onImport: {
                     viewModel.showMarkerSettings = false
@@ -132,6 +133,7 @@ struct ContentView: View {
 
             toolbarButton("Load", systemImage: "arrow.clockwise", help: "Read PT tracks.", tint: AppTheme.buttonLoad, disabled: viewModel.isLoading, action: viewModel.loadEDL)
                 .keyboardShortcut("r", modifiers: [.command])
+            toolbarButton("Demo", systemImage: "play.rectangle", help: "Review app.", tint: AppTheme.accent, disabled: viewModel.isLoading || viewModel.isImportingMarkers, action: viewModel.loadDemoMode)
             toolbarButton(viewModel.isImportingMarkers ? "Importing" : "Markers", systemImage: "mappin.and.ellipse", help: "Send markers.", tint: AppTheme.buttonMarkers, disabled: viewModel.entries.isEmpty || viewModel.isImportingMarkers, action: viewModel.openMarkerSettings)
             toolbarButton("Delete", systemImage: "trash", help: "Remove row.", tint: AppTheme.buttonDelete, disabled: viewModel.selectedEntryIDs.isEmpty, action: viewModel.deleteSelectedEntries)
             toolbarButton("Merge", systemImage: "arrow.triangle.merge", help: "Merge rows.", tint: AppTheme.buttonMerge, disabled: viewModel.selectedEntryIDs.count < 2, action: viewModel.mergeSelectedEntries)
@@ -414,6 +416,7 @@ struct ContentView: View {
                 .font(.system(size: 12))
                 .foregroundColor(
                     (viewModel.isLoading || viewModel.isImportingMarkers) ? AppTheme.accent :
+                    viewModel.isDemoMode ? AppTheme.accent :
                     !viewModel.isProToolsOnline ? Color.red :
                     AppTheme.textSecondary
                 )
@@ -425,7 +428,7 @@ struct ContentView: View {
                 .overlay(AppTheme.softBorder)
 
             stat(title: "Songs", value: "\(viewModel.entries.count)", tint: AppTheme.accent)
-            stat(title: "PT Selection", value: viewModel.foundTracks.isEmpty ? "-" : "\(viewModel.foundTracks.count)", tint: AppTheme.success)
+            stat(title: viewModel.isDemoMode ? "Demo Tracks" : "PT Selection", value: viewModel.foundTracks.isEmpty ? "-" : "\(viewModel.foundTracks.count)", tint: AppTheme.success)
 
             if !viewModel.missingTracks.isEmpty {
                 stat(title: "Missing", value: viewModel.missingTracks.joined(separator: ", "), tint: AppTheme.warning)
@@ -436,6 +439,15 @@ struct ContentView: View {
             }
 
             Spacer()
+
+            if viewModel.isDemoMode {
+                Text("DEMO MODE")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.textPrimary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule(style: .continuous).fill(AppTheme.accent.opacity(0.8)))
+            }
 
             if !viewModel.sessionName.isEmpty {
                 Text(viewModel.sessionName)
